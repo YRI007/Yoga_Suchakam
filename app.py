@@ -1,75 +1,89 @@
 import streamlit as st
 import pandas as pd
-import yfinance as yf
-import streamlit.components.v1 as components
+import requests
 import time
+import streamlit.components.v1 as components
 
-# પ્રોફેશનલ ડાર્ક થીમ સેટઅપ
-st.set_page_config(page_title="Yoga_Suchakam", layout="wide", initial_sidebar_state="expanded")
+# પેજ સેટઅપ
+st.set_page_config(page_title="Yoga_Suchakam | Pro Terminal", layout="wide")
 
-# CSS થી લુક સુધારવો (બ્રોકર જેવો લુક)
+# Delta Exchange API ફંક્શન
+def get_delta_live_data(symbol="BTCUSD"):
+    try:
+        # લાઈવ ભાવ માટે
+        url = f"https://api.delta.exchange/v2/tickers/{symbol}"
+        response = requests.get(url).json()
+        price = response['result']['mark_price']
+        
+        # Order Book (Market Depth) માટે
+        orderbook_url = f"https://api.delta.exchange/v2/l2orderbook/{symbol}?limit=5"
+        ob_response = requests.get(orderbook_url).json()
+        bids = ob_response['result']['buy']
+        asks = ob_response['result']['sell']
+        
+        return float(price), bids, asks
+    except:
+        return None, [], []
+
+# CSS થી પ્રોફેશનલ લુક
 st.markdown("""
     <style>
-    .stApp { background-color: #0e1117; color: white; }
-    .metric-container { background-color: #1e222d; padding: 15px; border-radius: 10px; }
+    .stApp { background-color: #0b0e11; color: #d1d4dc; }
+    .price-box { font-size: 30px; font-weight: bold; color: #00ff00; background: #161a1e; padding: 10px; border-radius: 5px; }
+    .order-green { color: #00ff00; font-family: monospace; }
+    .order-red { color: #ff4d4d; font-family: monospace; }
     </style>
     """, unsafe_allow_html=True)
 
-# ડેટા સ્ટોરેજ
-if 'balance' not in st.session_state: st.session_state.balance = 100000.0
-if 'position' not in st.session_state: st.session_state.position = None
+# --- મુખ્ય લેઆઉટ ---
+st.title("🧘 યોગ-સૂચકમ | Live Crypto Terminal")
 
-# --- સાઇડબાર: ઓર્ડર પેનલ (Fyers જેવી) ---
-st.sidebar.title("⚡ Quick Order")
-symbol = st.sidebar.text_input("Symbol", "NSE:NIFTY50").upper()
-order_type = st.sidebar.radio("Type", ["BUY (CE)", "SELL (PE)"])
-qty = st.sidebar.number_input("Qty", value=50, step=50)
-st.sidebar.divider()
-st.sidebar.subheader("🛡️ Risk Guard")
-tp = st.sidebar.number_input("Target Points", value=20.0)
-sl = st.sidebar.number_input("Stop Loss", value=10.0)
+symbol = st.sidebar.selectbox("પસંદ કરો", ["BTCUSD", "ETHUSD", "SOLUSD", "DETOUSD"])
+price, bids, asks = get_delta_live_data(symbol)
 
-# --- મુખ્ય સ્ક્રીન લેઆઉટ ---
-col_chart, col_orders = st.columns([3, 1])
+col_chart, col_trade = st.columns([3, 1])
 
 with col_chart:
-    st.title("🧘 યોગ-સૂચકમ")
-    # TradingView ચાર્ટ એમ્બેડ કરવો (આ બ્રોકર જેવો જ ચાર્ટ બતાવશે)
+    # લાઈવ પ્રાઈસ ડિસ્પ્લે
+    st.markdown(f"<div class='price-box'>${price}</div>", unsafe_allow_html=True)
+    
+    # TradingView નો અસલી ચાર્ટ (Delta Exchange સ્ટાઈલ)
     chart_html = f"""
-    <div style="height:500px;">
-        <iframe src="https://s.tradingview.com/widgetembed/?frameElementId=tradingview_76d4d&symbol={symbol}&interval=5&hidesidetoolbar=0&symboledit=1&saveimage=1&toolbarbg=f1f3f6&studies=[]&theme=dark&style=1&timezone=Asia%2FKolkata" 
-        width="100%" height="100%" frameborder="0" allowfullscreen></iframe>
+    <div style="height:550px;">
+        <iframe src="https://s.tradingview.com/widgetembed/?symbol=BITMEX:{symbol}&interval=5&theme=dark" 
+        width="100%" height="100%" frameborder="0"></iframe>
     </div>
     """
-    components.html(chart_html, height=500)
+    components.html(chart_html, height=550)
 
-with col_orders:
-    st.subheader("📊 Market Depth")
-    # કાલ્પનિક ઓર્ડર બુક (Live બ્રોકર વગર આ બતાવવું મુશ્કેલ છે, પણ આપણે લુક આપી શકીએ)
-    st.write("🟢 Buy Orders | 🔴 Sell Orders")
-    st.code("23140.50 - 5500\n23139.00 - 1200\n23142.10 - 3400", language="bash")
+with col_trade:
+    st.subheader("📊 Order Book")
+    # લાલ ભાવ (Asks/Sellers)
+    for ask in reversed(asks):
+        st.markdown(f"<p class='order-red'>{ask['price']} ---- {ask['size']}</p>", unsafe_allow_html=True)
     
+    st.markdown(f"### {price}")
+    
+    # લીલા ભાવ (Bids/Buyers)
+    for bid in bids:
+        st.markdown(f"<p class='order-green'>{bid['price']} ---- {bid['size']}</p>", unsafe_allow_html=True)
+
     st.divider()
     
-    # લાઈવ પોઝિશન ટ્રેકર
-    if st.session_state.position:
-        st.success("🎯 Active Position Running")
-        if st.button("🔴 SQUARE OFF (EXIT)"):
-            st.session_state.position = None
-            st.rerun()
-    else:
-        if st.sidebar.button("🚀 PLACE ORDER", use_container_width=True):
-            st.session_state.position = {"status": "OPEN"}
-            st.balloons()
+    # ક્વિક ટ્રેડિંગ પેનલ
+    st.subheader("⚡ Quick Trade")
+    qty = st.number_input("જથ્થો", value=0.001, step=0.001, format="%.3f")
+    col_buy, col_sell = st.columns(2)
+    if col_buy.button("BUY / LONG", use_container_width=True, type="primary"):
+        st.toast(f"Bought {qty} {symbol}")
+    if col_sell.button("SELL / SHORT", use_container_width=True):
+        st.toast(f"Sold {qty} {symbol}")
 
-# --- નીચેનો ભાગ: ઓપ્શન ચેઈન સ્ટાઈલ ---
+# ઇન્વેન્ટરી અને પોઝિશન (નીચેનો ભાગ)
 st.divider()
-st.subheader("⛓️ Option Chain (NIFTY)")
-option_data = {
-    "Calls (OI)": [1200, 3400, 5600],
-    "Strike": [23100, 23150, 23200],
-    "Puts (OI)": [4500, 2100, 900]
-}
-st.table(pd.DataFrame(option_data))
+st.subheader("📋 ઓપન પોઝિશન અને હિસ્ટ્રી")
+st.write("હજી કોઈ લાઈવ પોઝિશન નથી. પેપર ટ્રેડિંગ ચાલુ છે.")
 
-time.sleep(5)
+# દર ૨ સેકન્ડે ઓટો રિફ્રેશ
+time.sleep(2)
+st.rerun()
